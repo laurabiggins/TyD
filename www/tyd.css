@@ -1,7 +1,10 @@
 
 body {
-  background-color: #8A89C0;
-  height: 80%;
+  background-color: #8A89C0 !important;
+}
+
+.dashboard-page-wrapper {
+  height: 95% !important;
 }
 
 .storyboard-nav .sbprev, .storyboard-nav .sbnext, .storyboard-nav .sbframelist {
@@ -15,7 +18,6 @@ body {
   border-radius: 20px;
   width: 250px;
   color: black;
-/*  height: 60%;*/
 }
 
 .storyboard-nav .sbframelist ul li.active {
@@ -23,7 +25,8 @@ body {
 }
 
 .chart-wrapper {
-  margin: 20px;
+  margin: 5px 20px 5px 10px;
+  overflow: auto;
 }
 
 .container-fluid {
@@ -40,7 +43,7 @@ body {
   background-color: #96E6B3;
   padding: 10px;
   font-weight: bold;
-  margin: 20px 20px 20px 0px;
+  margin: 5px 20px 5px 0px;
 }
 
 #example_data {
@@ -50,5 +53,9 @@ body {
 }
 
 .btn {
-  border-radius: 10px;
+  border-radius: 10px !important;
+}
+
+.footer-text{
+  float: right;
 }
