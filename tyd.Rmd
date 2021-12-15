@@ -10,13 +10,10 @@ output:
 runtime: shiny_prerendered
 ---
 
-<!--[Place your content here]{.navbar-fixed-bottom .text-muted .bg-info} -->
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+shinyFeedback::useShinyFeedback()
 library(magrittr)
-server_var <- "server"
-render_var <- "render"
 ```
 
 ### Original dataset
@@ -31,13 +28,13 @@ DT::dataTableOutput(outputId = "original_data")
   
 Upload dataset
 
-```{r, context=render_var}
+```{r}
 fileInput(inputId = "input_file", label = NULL)
 ```
 
-<p class="upload-text">OR</p>
+OR
 
-```{r, context=render_var}
+```{r}
 actionButton(inputId = "example_data", label = "Use example data")
 ```
 
@@ -51,7 +48,7 @@ DT::dataTableOutput(outputId = "grouped_table")
 
 ***
 
-```{r, context=render_var}
+```{r}
 selectInput(inputId = "grouping_var", label = "Choose grouping variable", choices = "")
 selectInput(inputId = "row_names", label = "Choose variable for row names", choices = "")
 selectInput(inputId = "data_values", label = "Choose data values", choices = "")
@@ -67,13 +64,30 @@ DT::dataTableOutput(outputId = "column_table")
 ```
 
 ***
-```{r, context=render_var}
+```{r}
 selectInput(inputId = "column_grouping_var", label = "Choose grouping variable", choices = "")
 selectInput(inputId = "column_data_values", label = "Choose data values", choices = "")
+br()
+(downloadButton(outputId = "download_column", label = "download data"))
 ```
 
 
-```{r dt_options, context=server_var}
+### Contingency table
+
+```{r}
+DT::dataTableOutput(outputId = "contingency_table")
+```
+
+***
+```{r}
+selectInput(inputId = "contingency_varA", label = "Choose variable A", choices = "")
+selectInput(inputId = "contingency_varB", label = "Choose variable B", choices = "")
+br()
+(downloadButton(outputId = "download_contingency", label = "download data"))
+```
+
+
+```{r dt_options, context="server"}
 dt_options <- list(
   scrollX = TRUE,
   autoWidth = FALSE,
@@ -83,12 +97,31 @@ dt_options <- list(
 ```
 
 
-```{r import_data, context=server_var}
+```{r import_data, context="server"}
 dataset <- reactiveVal()
 data_path <- reactive(input$input_file$datapath)
 
+not_all_na <- function(x) {!all(is.na(x))}
+
+read_dataset <- function(filepath){
+  dataset <- switch(tools::file_ext(filepath), 
+    tsv = ,
+    dat = ,
+    txt = readr::read_tsv(filepath),
+    csv = readr::read_csv(filepath),
+    xls = ,
+    xlsx = readxl::read_excel(filepath),
+    stop("Unknown file extension on data file")
+  )
+  # remove any rows or columns that are all NA
+  dataset %>%
+    dplyr::filter(dplyr::if_any(tidyselect::everything(), ~ !is.na(.))) %>%
+    dplyr::select_if(not_all_na)
+}
+
 observeEvent(data_path(), {
-  imported_data <- readr::read_delim(data_path())
+  
+  imported_data <- read_dataset(data_path())
   # some nice thorough checks here...
   dataset(imported_data)
 })
@@ -112,6 +145,10 @@ observeEvent(dataset(), {
   
   updateSelectInput(inputId="column_grouping_var", choices=column_names)
   updateSelectInput(inputId="column_data_values", choices=column_names, selected = data_selection)
+  
+  updateSelectInput(inputId="contingency_varA", choices=column_names)
+  updateSelectInput(inputId="contingency_varB", choices=column_names, selected = column_names[2])
+  
 })
 
 output$original_data <- DT::renderDataTable({
@@ -121,19 +158,56 @@ output$original_data <- DT::renderDataTable({
 })
 ```
 
-```{r grouped_processing, context=server_var}
+```{r grouped_processing, context="server"}
+observe({
+  shinyFeedback::feedbackDanger(
+    inputId = "grouping_var",
+    show = input$grouping_var %in% c(input$row_names, input$data_values),
+    text = "No duplications allowed"
+  )
+  shinyFeedback::feedbackDanger(
+    inputId = "row_names",
+    show = input$row_names %in% c(input$data_values, input$grouping_var),
+    text = "No duplications allowed"
+  )
+  shinyFeedback::feedbackDanger(
+    inputId = "data_values",
+    show = input$data_values %in% c(input$row_names, input$grouping_var),
+    text = "No duplications allowed"
+  )
+  if(anyDuplicated(c(input$row_names, input$data_values, input$grouping_var)) == 0){
+    shinyFeedback::hideFeedback("grouping_var")
+    shinyFeedback::hideFeedback("row_names")
+    shinyFeedback::hideFeedback("data_values")
+  } else {
+    if(! input$grouping_var %in% c(input$row_names, input$data_values)) {
+      shinyFeedback::hideFeedback("grouping_var")
+    }
+    if(! input$row_names %in% c(input$data_values, input$grouping_var)) {
+      shinyFeedback::hideFeedback("row_names")
+    }
+    if(! input$data_values %in% c(input$row_names, input$grouping_var)) {
+       shinyFeedback::hideFeedback("data_values")
+    }
+  }
+})
+
 # check if there's a unique identifier
 my_grouped_dataset <- reactive({
   req(dataset())
+  req(anyDuplicated(c(input$row_names, input$data_values, input$grouping_var)) == 0)
+
   my_dataset <- dataset()
+  
   if(anyDuplicated(dplyr::select(my_dataset, - .data[[input$data_values]])) > 0){
     my_dataset <- my_dataset %>%
       dplyr::group_by(.data[[input$grouping_var]], .data[[input$row_names]]) %>%
       dplyr::mutate(id = dplyr::row_number()) %>%
       dplyr::ungroup()
-    }
+  }
   my_dataset %>%
     tidyr::pivot_wider(values_from = .data[[input$data_values]], names_from = c(.data[[input$grouping_var]], id))
+
 })
 
 output$grouped_table <- DT::renderDataTable({
@@ -150,7 +224,6 @@ output$grouped_table <- DT::renderDataTable({
     ) %>% 
       DT::formatStyle(0, target = 'row', `font-size` = '90%', lineHeight = '80%') 
 })
-
 ```
 
 ```{r download_grouped, context="server"}
@@ -165,10 +238,28 @@ output$download_grouped <- downloadHandler(
 ```
 
 
-```{r column_processing, context=server_var}
+```{r column_processing, context="server"}
+observe({
+  shinyFeedback::feedbackDanger(
+    inputId = "column_grouping_var",
+    show = input$column_grouping_var == input$column_data_values,
+    text = "No duplications allowed"
+  )
+  shinyFeedback::feedbackDanger(
+    inputId = "column_data_values",
+    show = input$column_data_values == input$column_grouping_var,
+    text = "No duplications allowed"
+  )
+  if(input$column_grouping_var != input$column_data_values) {
+    shinyFeedback::hideFeedback("column_grouping_var")
+    shinyFeedback::hideFeedback("column_data_values")
+  }
+})
+
 my_column_dataset <- reactive({
   req(dataset())
-
+  req(input$column_grouping_var != input$column_data_values)
+  
   dataset() %>%
     dplyr::select(.data[[input$column_grouping_var]], .data[[input$column_data_values]]) %>%
     dplyr::group_by(.data[[input$column_grouping_var]]) %>%
@@ -203,3 +294,77 @@ output$column_table <- DT::renderDataTable({
 #   dplyr::select(-id)
 ```
 
+```{r download_column, context="server"}
+output$download_column <- downloadHandler(
+    filename = function() {
+      "column_dataset.csv"
+    },
+    content = function(file) {
+      readr::write_csv(x = my_column_dataset(), file)
+    }
+)
+```
+
+
+```{r contingency_processing, context="server"}
+observe({
+  shinyFeedback::feedbackDanger(
+    inputId = "contingency_varA",
+    show = input$contingency_varA == input$contingency_varB,
+    text = "No duplications allowed"
+  )
+  shinyFeedback::feedbackDanger(
+    inputId = "contingency_varB",
+    show = input$contingency_varA == input$contingency_varB,
+    text = "No duplications allowed"
+  )
+  if(input$contingency_varA != input$contingency_varB) {
+    shinyFeedback::hideFeedback("contingency_varA")
+    shinyFeedback::hideFeedback("contingency_varB")
+  }
+})
+
+# check if there's a unique identifier
+my_contingency_table <- reactive({
+  req(dataset())
+  req(input$contingency_varA != input$contingency_varB)
+  my_dataset <- dataset()
+  
+  my_dataset %>%
+    dplyr::count(.data[[input$contingency_varA]], .data[[input$contingency_varB]]) %>%
+    tidyr::spread(key = .data[[input$contingency_varB]], value = n)
+  
+  # test set - keep for now
+  #cats <- read_delim("test_data/cats.dat")
+  #cats %>%
+  #  dplyr::count(Training, Dance) %>%
+  #  tidyr::spread(Dance, n)
+})
+
+output$contingency_table <- DT::renderDataTable({
+  req(my_contingency_table())
+
+  DT::datatable(
+    my_contingency_table(),
+    rownames = FALSE,
+    options = list(
+        dom = "t", 
+        scrollX = TRUE, 
+        autoWidth = FALSE
+      )
+    )
+})
+```
+
+```{r download_contingency, context="server"}
+output$download_contingency <- downloadHandler(
+    filename = function() {
+      "contingency_table.csv"
+    },
+    content = function(file) {
+      readr::write_csv(x = my_contingency_table(), file)
+    }
+)
+```
+
+<!--[Place your content here]{.navbar-fixed-bottom .text-muted .bg-info} -->
