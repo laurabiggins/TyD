@@ -1,0 +1,196 @@
+---
+title: "Transform your Data"
+output: 
+  flexdashboard::flex_dashboard:
+    storyboard: true
+    resize_reload: false
+    css: "www/tyd.css"
+    includes:
+      after_body: "www/footer.html"    
+runtime: shiny_prerendered
+---
+
+<!--[Place your content here]{.navbar-fixed-bottom .text-muted .bg-info} -->
+
+```{css, echo = FALSE}
+/* need this here as body element of external css gets overwritten with shiny_prerendered*/
+body {
+  background-color: #8A89C0;
+}
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(magrittr)
+server_var <- "server"
+render_var <- "render"
+```
+
+### Original dataset
+
+```{r}
+DT::dataTableOutput(outputId = "original_data")
+```
+
+***
+
+<div class="upload-text"> 
+  
+Upload dataset
+
+```{r, context=render_var}
+fileInput(inputId = "input_file", label = NULL)
+```
+
+<p class="upload-text">OR</p>
+
+```{r, context=render_var}
+actionButton(inputId = "example_data", label = "Use example data")
+```
+
+</div>
+
+### Grouped output
+
+```{r}
+DT::dataTableOutput(outputId = "grouped_table")
+```
+
+***
+
+```{r, context=render_var}
+selectInput(inputId = "grouping_var", label = "Choose grouping variable", choices = "")
+selectInput(inputId = "row_names", label = "Choose variable for row names", choices = "")
+selectInput(inputId = "data_values", label = "Choose data values", choices = "")
+br()
+(downloadButton(outputId = "download_grouped", label = "download data"))
+```
+
+
+### Column output
+
+```{r}
+DT::dataTableOutput(outputId = "column_table")
+```
+
+***
+```{r, context=render_var}
+selectInput(inputId = "column_grouping_var", label = "Choose grouping variable", choices = "")
+selectInput(inputId = "column_data_values", label = "Choose data values", choices = "")
+```
+
+```{r import_data, context=server_var}
+dataset <- reactiveVal()
+data_path <- reactive(input$input_file$datapath)
+
+observeEvent(data_path(), {
+  imported_data <- readr::read_delim(data_path())
+  # some nice thorough checks here...
+  dataset(imported_data)
+})
+
+observeEvent(input$example_data, {
+  imported_data <- readRDS("test_data.rds")
+  dataset(imported_data)
+})
+
+observeEvent(dataset(), {
+  column_names <- colnames(dataset())
+  data_selection <- dplyr::if_else(length(column_names) > 2, column_names[3], column_names[2])
+  
+  updateSelectInput(inputId = "grouping_var", choices = column_names)
+  updateSelectInput(inputId = "row_names", choices = column_names, selected = column_names[2])
+  updateSelectInput(inputId = "data_values", choices = column_names, selected = data_selection)
+  
+  updateSelectInput(inputId = "column_grouping_var", choices = column_names)
+  updateSelectInput(inputId = "column_data_values", choices = column_names, selected = data_selection)
+})
+
+output$original_data <- DT::renderDataTable({
+  req(dataset())
+  dataset()
+})
+```
+
+```{r grouped_processing, context=server_var}
+# check if there's a unique identifier
+my_grouped_dataset <- reactive({
+  req(dataset())
+  my_dataset <- dataset()
+  if(anyDuplicated(dplyr::select(my_dataset, - .data[[input$data_values]])) > 0){
+    my_dataset <- my_dataset %>%
+      dplyr::group_by(.data[[input$grouping_var]], .data[[input$row_names]]) %>%
+      dplyr::mutate(id = dplyr::row_number()) %>%
+      dplyr::ungroup()
+    }
+  my_dataset %>%
+    tidyr::pivot_wider(values_from = .data[[input$data_values]], names_from = c(.data[[input$grouping_var]], id))
+})
+
+output$grouped_table <- DT::renderDataTable({
+  req(my_grouped_dataset())
+
+  DT::datatable(
+    my_grouped_dataset(),
+    rownames = FALSE,
+    options = list(
+        dom = "ftlip", 
+        scrollX = TRUE, 
+        autoWidth = FALSE
+      )
+    ) %>% 
+      DT::formatStyle(0, target = 'row', `font-size` = '90%', lineHeight = '80%') 
+})
+
+```
+
+```{r download_grouped, context="server"}
+output$download_grouped <- downloadHandler(
+    filename = function() {
+      "grouped_dataset.csv"
+    },
+    content = function(file) {
+      readr::write_csv(x = my_grouped_dataset(), file)
+    }
+)
+```
+
+
+```{r column_processing, context=server_var}
+my_column_dataset <- reactive({
+  req(dataset())
+
+  dataset() %>%
+    dplyr::select(.data[[input$column_grouping_var]], .data[[input$column_data_values]]) %>%
+    dplyr::group_by(.data[[input$column_grouping_var]]) %>%
+    dplyr::mutate(id = dplyr::row_number()) %>%
+    dplyr::ungroup() %>%
+    tidyr::pivot_wider(names_from = .data[[input$column_grouping_var]], values_from = .data[[input$column_data_values]]) %>%
+    dplyr::select(-id)
+})
+
+output$column_table <- DT::renderDataTable({
+  req(my_column_dataset())
+
+  DT::datatable(
+    my_column_dataset(),
+    rownames = FALSE,
+    options = list(
+        dom = "ftlip", 
+        scrollX = TRUE, 
+        autoWidth = FALSE
+      )
+    ) %>% 
+      DT::formatStyle(0, target = 'row', `font-size` = '90%', lineHeight = '80%') 
+})
+
+# test version
+# test_data %>%
+#   dplyr::select(1,3) %>%
+#   dplyr::group_by(gender) %>%
+#   dplyr::mutate(id = dplyr::row_number()) %>%
+#   dplyr::ungroup() %>%
+#   tidyr::pivot_wider(names_from = gender, values_from = attractiveness) %>%
+#   dplyr::select(-id)
+```
+

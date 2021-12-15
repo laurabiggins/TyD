@@ -1,0 +1,54 @@
+
+body {
+  background-color: #8A89C0;
+  height: 80%;
+}
+
+.storyboard-nav .sbprev, .storyboard-nav .sbnext, .storyboard-nav .sbframelist {
+    height: 60px;
+}
+
+.storyboard-nav .sbframelist ul li {
+  font-size: 26px;
+  text-align: center;
+  background: #E41138;
+  border-radius: 20px;
+  width: 250px;
+  color: black;
+/*  height: 60%;*/
+}
+
+.storyboard-nav .sbframelist ul li.active {
+    background-color: #EA8F1F;
+}
+
+.chart-wrapper {
+  margin: 20px;
+}
+
+.container-fluid {
+  background-color: #8A89C0;
+}
+
+.upload-text {
+  font-size: 30px;
+  text-align: center;
+  padding: 20px;
+}
+
+.sbframe-commentary {
+  background-color: #96E6B3;
+  padding: 10px;
+  font-weight: bold;
+  margin: 20px 20px 20px 0px;
+}
+
+#example_data {
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 22px;
+}
+
+.btn {
+  border-radius: 10px;
+}
