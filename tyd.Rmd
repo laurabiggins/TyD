@@ -204,10 +204,13 @@ my_grouped_dataset <- reactive({
       dplyr::group_by(.data[[input$grouping_var]], .data[[input$row_names]]) %>%
       dplyr::mutate(id = dplyr::row_number()) %>%
       dplyr::ungroup()
+    
+    my_dataset %>%
+      tidyr::pivot_wider(values_from = .data[[input$data_values]], names_from = c(.data[[input$grouping_var]], id))
+  } else {
+    my_dataset %>%
+      tidyr::pivot_wider(values_from = .data[[input$data_values]], names_from = .data[[input$grouping_var]])
   }
-  my_dataset %>%
-    tidyr::pivot_wider(values_from = .data[[input$data_values]], names_from = c(.data[[input$grouping_var]], id))
-
 })
 
 output$grouped_table <- DT::renderDataTable({
