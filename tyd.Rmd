@@ -13,13 +13,22 @@ runtime: shiny_prerendered
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 shinyFeedback::useShinyFeedback()
+shinyjs::useShinyjs(rmd = TRUE)
 library(magrittr)
 ```
 
-### Original dataset
+```{r TODO}
+# add a simple pivot/transpose
+# grouped data option only available for 3 or more columns
+# column output - the grouping variable should default to the column with the fewest unique values
+```
+
+
+### Original format
 
 ```{r}
-DT::dataTableOutput(outputId = "original_data")
+uiOutput("first_page")
+#DT::dataTableOutput(outputId = "original_data")
 ```
 
 ***
@@ -54,6 +63,8 @@ selectInput(inputId = "row_names", label = "Choose variable for row names", choi
 selectInput(inputId = "data_values", label = "Choose data values", choices = "")
 br()
 (downloadButton(outputId = "download_grouped", label = "download data"))
+br()
+(actionButton(inputId = "copy_grouped", label = "copy data to clipboard"))
 ```
 
 
@@ -69,8 +80,23 @@ selectInput(inputId = "column_grouping_var", label = "Choose grouping variable",
 selectInput(inputId = "column_data_values", label = "Choose data values", choices = "")
 br()
 (downloadButton(outputId = "download_column", label = "download data"))
+br()
+actionButton(inputId = "copy_column", label = "copy data to clipboard")
 ```
 
+### Transpose
+
+```{r}
+DT::dataTableOutput(outputId = "transposed_table")
+```
+
+***
+```{r}
+br()
+(downloadButton(outputId = "download_transposed", label = "download data"))
+br()
+actionButton(inputId = "copy_transposed", label = "copy data to clipboard")
+```
 
 ### Contingency table
 
@@ -96,6 +122,18 @@ dt_options <- list(
 )
 ```
 
+```{r first_page, context="server"}
+# we don't need this, but copy this over to the grouped output so we can have a message there
+output$first_page <- renderUI({
+  
+  if(! isTruthy(dataset())){
+    h2("Load a dataset")
+  } else {
+    DT::dataTableOutput(outputId = "original_data")
+  }
+  
+})
+```
 
 ```{r import_data, context="server"}
 dataset <- reactiveVal()
@@ -143,9 +181,12 @@ observeEvent(dataset(), {
   updateSelectInput(inputId="row_names", choices=column_names, selected = column_names[2])
   updateSelectInput(inputId="data_values", choices=column_names, selected = data_selection)
   
-  updateSelectInput(inputId="column_grouping_var", choices=column_names)
-  updateSelectInput(inputId="column_data_values", choices=column_names, selected = data_selection)
-  
+  if(length(column_names) > 2) {
+    updateSelectInput(inputId="column_grouping_var", choices=column_names)
+    updateSelectInput(inputId="column_data_values", choices=column_names, selected = data_selection)
+  } else {
+    shinysjs::disable("")
+  }
   updateSelectInput(inputId="contingency_varA", choices=column_names)
   updateSelectInput(inputId="contingency_varB", choices=column_names, selected = column_names[2])
   
@@ -238,6 +279,11 @@ output$download_grouped <- downloadHandler(
       readr::write_csv(x = my_grouped_dataset(), file)
     }
 )
+
+observeEvent(input$copy_grouped, {
+  clipr::write_clip(my_grouped_dataset(), allow_non_interactive=TRUE)
+})
+
 ```
 
 
@@ -306,7 +352,50 @@ output$download_column <- downloadHandler(
       readr::write_csv(x = my_column_dataset(), file)
     }
 )
+
+observeEvent(input$copy_column, {
+  clipr::write_clip(my_column_dataset(), allow_non_interactive=TRUE)
+})
+
 ```
+
+```{r transpose_processing, context="server"}
+my_transposed_dataset <- reactive({
+  req(dataset())
+  
+  t(dataset())
+})
+
+output$transposed_table <- DT::renderDataTable({
+  req(my_transposed_dataset())
+
+  DT::datatable(
+    my_transposed_dataset(),
+    options = list(
+        dom = "ftlip", 
+        scrollX = TRUE, 
+        autoWidth = FALSE
+      )
+    ) %>% 
+      DT::formatStyle(0, target = 'row', `font-size` = '90%', lineHeight = '80%') 
+})
+```
+
+```{r download_transposed, context="server"}
+output$download_transposed <- downloadHandler(
+    filename = function() {
+      "transposed_dataset.csv"
+    },
+    content = function(file) {
+      readr::write_csv(x = my_transposed_dataset(), file)
+    }
+)
+
+observeEvent(input$copy_transposed, {
+  clipr::write_clip(my_transposed_dataset(), allow_non_interactive=TRUE)
+})
+```
+
 
 
 ```{r contingency_processing, context="server"}

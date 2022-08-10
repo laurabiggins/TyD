@@ -4,7 +4,7 @@ body {
 }
 
 .dashboard-page-wrapper {
-  height: 95% !important;
+  height: 90% !important;
 }
 
 .storyboard-nav .sbprev, .storyboard-nav .sbnext, .storyboard-nav .sbframelist {
@@ -12,11 +12,12 @@ body {
 }
 
 .storyboard-nav .sbframelist ul li {
-  font-size: 24px;
+  font-size: 20px;
   text-align: center;
   background: #E41138;
   border-radius: 20px;
-  width: 220px;
+  width: 180px;
+  padding: 10px;
   color: black;
 }
 
@@ -59,4 +60,6 @@ body {
 
 .footer-text{
   float: right;
+  font-size: 14px;
+  margin: 5px;
 }
