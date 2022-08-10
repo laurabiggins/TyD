@@ -10,6 +10,16 @@ output:
 runtime: shiny_prerendered
 ---
 
+```{r, echo=FALSE}
+shiny::addResourcePath("shinyjs", system.file("srcjs", package = "shinyjs"))
+```
+
+```{r, context="server"}
+shinyjs::useShinyjs(html = TRUE)
+```
+
+<script src="shinyjs/inject.js"></script>
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 shinyFeedback::useShinyFeedback()
@@ -18,17 +28,17 @@ library(magrittr)
 ```
 
 ```{r TODO}
-# add a simple pivot/transpose
 # grouped data option only available for 3 or more columns
 # column output - the grouping variable should default to the column with the fewest unique values
+# 
 ```
 
 
-### Original format
+### Original data
 
 ```{r}
-uiOutput("first_page")
-#DT::dataTableOutput(outputId = "original_data")
+
+DT::dataTableOutput(outputId = "original_data")
 ```
 
 ***
@@ -49,10 +59,12 @@ actionButton(inputId = "example_data", label = "Use example data")
 
 </div>
 
+
 ### Grouped output
 
+
 ```{r}
-DT::dataTableOutput(outputId = "grouped_table")
+uiOutput("grouped_output")
 ```
 
 ***
@@ -67,11 +79,11 @@ br()
 (actionButton(inputId = "copy_grouped", label = "copy data to clipboard"))
 ```
 
-
 ### Column output
 
 ```{r}
-DT::dataTableOutput(outputId = "column_table")
+uiOutput("column_output")
+#DT::dataTableOutput(outputId = "column_table")
 ```
 
 ***
@@ -120,20 +132,47 @@ dt_options <- list(
   pageLength = 15,
   dom = "ftip"
 )
+
+hide_download_btns <- function(){
+  shinyjs::hide("download_grouped")
+  shinyjs::hide("download_column")
+  shinyjs::hide("download_transposed")
+  shinyjs::hide("download_contingency")
+}
+
+show_download_btns <- function(){
+  shinyjs::show("download_grouped")
+  shinyjs::show("download_column")
+  shinyjs::show("download_transposed")
+  shinyjs::show("download_contingency")
+}
+
+create_table_UI <- function(tableoutputID, valid_dataset){
+  if(!valid_dataset){
+    p(class="load_ds_msg", "Load a dataset first, go to the 'Original data' tab")
+  } else {
+    DT::dataTableOutput(outputId = tableoutputID)
+  }
+}
+
+show_data_table <- function(dataset){
+  DT::datatable(
+    dataset,
+    rownames = FALSE,
+    options = list(
+        dom = "ftlip", 
+        scrollX = TRUE, 
+        autoWidth = FALSE
+      )
+    ) %>% 
+      DT::formatStyle(0, target = 'row', `font-size` = '90%', lineHeight = '80%') 
+}
+
+
+hide_download_btns()
+
 ```
 
-```{r first_page, context="server"}
-# we don't need this, but copy this over to the grouped output so we can have a message there
-output$first_page <- renderUI({
-  
-  if(! isTruthy(dataset())){
-    h2("Load a dataset")
-  } else {
-    DT::dataTableOutput(outputId = "original_data")
-  }
-  
-})
-```
 
 ```{r import_data, context="server"}
 dataset <- reactiveVal()
@@ -181,11 +220,13 @@ observeEvent(dataset(), {
   updateSelectInput(inputId="row_names", choices=column_names, selected = column_names[2])
   updateSelectInput(inputId="data_values", choices=column_names, selected = data_selection)
   
+  show_download_btns()
+  
   if(length(column_names) > 2) {
     updateSelectInput(inputId="column_grouping_var", choices=column_names)
     updateSelectInput(inputId="column_data_values", choices=column_names, selected = data_selection)
   } else {
-    shinysjs::disable("")
+    shinysjs::hide("download_grouped")
   }
   updateSelectInput(inputId="contingency_varA", choices=column_names)
   updateSelectInput(inputId="contingency_varB", choices=column_names, selected = column_names[2])
@@ -201,6 +242,8 @@ output$original_data <- DT::renderDataTable({
 
 ```{r grouped_processing, context="server"}
 observe({
+  req(dataset())
+  
   shinyFeedback::feedbackDanger(
     inputId = "grouping_var",
     show = input$grouping_var %in% c(input$row_names, input$data_values),
@@ -253,31 +296,37 @@ my_grouped_dataset <- reactive({
       tidyr::pivot_wider(values_from = .data[[input$data_values]], names_from = .data[[input$grouping_var]])
   }
 })
+```
+
+```{r grouped_ui, context="server"}
+output$grouped_output <- renderUI(create_table_UI("grouped_table", isTruthy(dataset())))
 
 output$grouped_table <- DT::renderDataTable({
   req(my_grouped_dataset())
+  show_data_table(my_grouped_dataset())
 
-  DT::datatable(
-    my_grouped_dataset(),
-    rownames = FALSE,
-    options = list(
-        dom = "lftip", 
-        scrollX = TRUE, 
-        autoWidth = FALSE
-      )
-    ) %>% 
-      DT::formatStyle(0, target = 'row', `font-size` = '90%', lineHeight = '80%') 
+  # DT::datatable(
+  #   my_grouped_dataset(),
+  #   rownames = FALSE,
+  #   options = list(
+  #       dom = "lftip", 
+  #       scrollX = TRUE, 
+  #       autoWidth = FALSE
+  #     )
+  #   ) %>% 
+  #     DT::formatStyle(0, target = 'row', `font-size` = '90%', lineHeight = '80%') 
 })
 ```
 
 ```{r download_grouped, context="server"}
 output$download_grouped <- downloadHandler(
-    filename = function() {
-      "grouped_dataset.csv"
-    },
-    content = function(file) {
-      readr::write_csv(x = my_grouped_dataset(), file)
-    }
+  
+  filename = function() {
+    "grouped_dataset.csv"
+  },
+  content = function(file) {
+    readr::write_csv(x = my_grouped_dataset(), file)
+  }
 )
 
 observeEvent(input$copy_grouped, {
@@ -317,30 +366,18 @@ my_column_dataset <- reactive({
     tidyr::pivot_wider(names_from = .data[[input$column_grouping_var]], values_from = .data[[input$column_data_values]]) %>%
     dplyr::select(-id)
 })
+```
+
+```{r, context="server"}
+output$column_output <- renderUI({
+  #browser()
+  create_table_UI("column_table", isTruthy(dataset()))
+})
 
 output$column_table <- DT::renderDataTable({
   req(my_column_dataset())
-
-  DT::datatable(
-    my_column_dataset(),
-    rownames = FALSE,
-    options = list(
-        dom = "ftlip", 
-        scrollX = TRUE, 
-        autoWidth = FALSE
-      )
-    ) %>% 
-      DT::formatStyle(0, target = 'row', `font-size` = '90%', lineHeight = '80%') 
+  show_data_table(my_column_dataset())
 })
-
-# test version
-# test_data %>%
-#   dplyr::select(1,3) %>%
-#   dplyr::group_by(gender) %>%
-#   dplyr::mutate(id = dplyr::row_number()) %>%
-#   dplyr::ungroup() %>%
-#   tidyr::pivot_wider(names_from = gender, values_from = attractiveness) %>%
-#   dplyr::select(-id)
 ```
 
 ```{r download_column, context="server"}
@@ -368,16 +405,16 @@ my_transposed_dataset <- reactive({
 
 output$transposed_table <- DT::renderDataTable({
   req(my_transposed_dataset())
-
-  DT::datatable(
-    my_transposed_dataset(),
-    options = list(
-        dom = "ftlip", 
-        scrollX = TRUE, 
-        autoWidth = FALSE
-      )
-    ) %>% 
-      DT::formatStyle(0, target = 'row', `font-size` = '90%', lineHeight = '80%') 
+  show_data_table(my_transposed_dataset())
+  # DT::datatable(
+  #   my_transposed_dataset(),
+  #   options = list(
+  #       dom = "ftlip", 
+  #       scrollX = TRUE, 
+  #       autoWidth = FALSE
+  #     )
+  #   ) %>% 
+  #     DT::formatStyle(0, target = 'row', `font-size` = '90%', lineHeight = '80%') 
 })
 ```
 
@@ -435,7 +472,7 @@ my_contingency_table <- reactive({
 
 output$contingency_table <- DT::renderDataTable({
   req(my_contingency_table())
-
+  
   DT::datatable(
     my_contingency_table(),
     rownames = FALSE,

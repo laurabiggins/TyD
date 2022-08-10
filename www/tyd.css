@@ -63,3 +63,7 @@ body {
   font-size: 14px;
   margin: 5px;
 }
+
+.load_ds_msg {
+  color: red;
+}
