@@ -179,6 +179,19 @@ create_download_handler <- function(dataset, dataset_name){
   )
 }
 
+duplicate_warning <- function(a, b){
+  shinyFeedback::feedbackDanger(
+    inputId = a,
+    show = input[[a]] == input[[b]],
+    text = "No duplications allowed from this function"
+  )
+  shinyFeedback::feedbackDanger(
+    inputId = b,
+    show = input[[a]] == input[[b]],
+    text = "No duplications allowed from this function"
+  )
+}
+
 hide_download_btns()
 
 ```
@@ -328,33 +341,10 @@ observeEvent(input$copy_grouped, {
 
 
 ```{r column_processing, context="server"}
-duplicate_warning <- function(a, b){
-  shinyFeedback::feedbackDanger(
-    inputId = a,
-    show = input[[a]] == input[[b]],
-    text = "No duplications allowed from this function"
-  )
-  shinyFeedback::feedbackDanger(
-    inputId = b,
-    show = input[[a]] == input[[b]],
-    text = "No duplications allowed from this function"
-  )
-}
-
 observe({
   req(dataset())
   duplicate_warning("column_grouping_var", "column_data_values")
-  #duplicate_warning("column_data_values", "column_grouping_var")
-  # shinyFeedback::feedbackDanger(
-  #   inputId = "column_grouping_var",
-  #   show = input$column_grouping_var == input$column_data_values,
-  #   text = "No duplications allowed"
-  # )
-  # shinyFeedback::feedbackDanger(
-  #   inputId = "column_data_values",
-  #   show = input$column_data_values == input$column_grouping_var,
-  #   text = "No duplications allowed"
-  # )
+
   if(input$column_grouping_var != input$column_data_values) {
     shinyFeedback::hideFeedback("column_grouping_var")
     shinyFeedback::hideFeedback("column_data_values")
@@ -420,16 +410,8 @@ observeEvent(input$copy_transposed, {
 ```{r contingency_processing, context="server"}
 observe({
   req(dataset())
-  shinyFeedback::feedbackDanger(
-    inputId = "contingency_varA",
-    show = input$contingency_varA == input$contingency_varB,
-    text = "No duplications allowed"
-  )
-  shinyFeedback::feedbackDanger(
-    inputId = "contingency_varB",
-    show = input$contingency_varA == input$contingency_varB,
-    text = "No duplications allowed"
-  )
+  duplicate_warning("contingency_varA", "contingency_varB")
+
   if(input$contingency_varA != input$contingency_varB) {
     shinyFeedback::hideFeedback("contingency_varA")
     shinyFeedback::hideFeedback("contingency_varB")
