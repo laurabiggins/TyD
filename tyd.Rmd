@@ -30,14 +30,13 @@ library(magrittr)
 ```{r TODO}
 # grouped data option only available for 3 or more columns
 # column output - the grouping variable should default to the column with the fewest unique values
-# 
+# do the transposing properly - in a tidyverse way so that it can be downloaded
 ```
 
 
 ### Original data
 
 ```{r}
-
 DT::dataTableOutput(outputId = "original_data")
 ```
 
@@ -168,6 +167,17 @@ show_data_table <- function(dataset){
       DT::formatStyle(0, target = 'row', `font-size` = '90%', lineHeight = '80%') 
 }
 
+create_download_handler <- function(dataset, dataset_name){
+  browser()
+  downloadHandler(
+    filename = function() {
+      paste0(dataset_name,".csv")
+    },
+    content = function(file) {
+      readr::write_csv(x = dataset, file)
+    }
+  )
+}
 
 hide_download_btns()
 
@@ -304,30 +314,11 @@ output$grouped_output <- renderUI(create_table_UI("grouped_table", isTruthy(data
 output$grouped_table <- DT::renderDataTable({
   req(my_grouped_dataset())
   show_data_table(my_grouped_dataset())
-
-  # DT::datatable(
-  #   my_grouped_dataset(),
-  #   rownames = FALSE,
-  #   options = list(
-  #       dom = "lftip", 
-  #       scrollX = TRUE, 
-  #       autoWidth = FALSE
-  #     )
-  #   ) %>% 
-  #     DT::formatStyle(0, target = 'row', `font-size` = '90%', lineHeight = '80%') 
 })
 ```
 
 ```{r download_grouped, context="server"}
-output$download_grouped <- downloadHandler(
-  
-  filename = function() {
-    "grouped_dataset.csv"
-  },
-  content = function(file) {
-    readr::write_csv(x = my_grouped_dataset(), file)
-  }
-)
+output$download_grouped <- create_download_handler(my_grouped_dataset(), "grouped_dataset")
 
 observeEvent(input$copy_grouped, {
   clipr::write_clip(my_grouped_dataset(), allow_non_interactive=TRUE)
@@ -337,17 +328,33 @@ observeEvent(input$copy_grouped, {
 
 
 ```{r column_processing, context="server"}
+duplicate_warning <- function(a, b){
+  shinyFeedback::feedbackDanger(
+    inputId = a,
+    show = input[[a]] == input[[b]],
+    text = "No duplications allowed from this function"
+  )
+  shinyFeedback::feedbackDanger(
+    inputId = b,
+    show = input[[a]] == input[[b]],
+    text = "No duplications allowed from this function"
+  )
+}
+
 observe({
-  shinyFeedback::feedbackDanger(
-    inputId = "column_grouping_var",
-    show = input$column_grouping_var == input$column_data_values,
-    text = "No duplications allowed"
-  )
-  shinyFeedback::feedbackDanger(
-    inputId = "column_data_values",
-    show = input$column_data_values == input$column_grouping_var,
-    text = "No duplications allowed"
-  )
+  req(dataset())
+  duplicate_warning("column_grouping_var", "column_data_values")
+  #duplicate_warning("column_data_values", "column_grouping_var")
+  # shinyFeedback::feedbackDanger(
+  #   inputId = "column_grouping_var",
+  #   show = input$column_grouping_var == input$column_data_values,
+  #   text = "No duplications allowed"
+  # )
+  # shinyFeedback::feedbackDanger(
+  #   inputId = "column_data_values",
+  #   show = input$column_data_values == input$column_grouping_var,
+  #   text = "No duplications allowed"
+  # )
   if(input$column_grouping_var != input$column_data_values) {
     shinyFeedback::hideFeedback("column_grouping_var")
     shinyFeedback::hideFeedback("column_data_values")
@@ -381,14 +388,7 @@ output$column_table <- DT::renderDataTable({
 ```
 
 ```{r download_column, context="server"}
-output$download_column <- downloadHandler(
-    filename = function() {
-      "column_dataset.csv"
-    },
-    content = function(file) {
-      readr::write_csv(x = my_column_dataset(), file)
-    }
-)
+output$download_column <- create_download_handler(my_column_dataset(), "column_dataset")
 
 observeEvent(input$copy_column, {
   clipr::write_clip(my_column_dataset(), allow_non_interactive=TRUE)
@@ -406,37 +406,20 @@ my_transposed_dataset <- reactive({
 output$transposed_table <- DT::renderDataTable({
   req(my_transposed_dataset())
   show_data_table(my_transposed_dataset())
-  # DT::datatable(
-  #   my_transposed_dataset(),
-  #   options = list(
-  #       dom = "ftlip", 
-  #       scrollX = TRUE, 
-  #       autoWidth = FALSE
-  #     )
-  #   ) %>% 
-  #     DT::formatStyle(0, target = 'row', `font-size` = '90%', lineHeight = '80%') 
 })
 ```
 
 ```{r download_transposed, context="server"}
-output$download_transposed <- downloadHandler(
-    filename = function() {
-      "transposed_dataset.csv"
-    },
-    content = function(file) {
-      readr::write_csv(x = my_transposed_dataset(), file)
-    }
-)
+output$download_transposed <- create_download_handler(my_transposed_dataset(), "transposed_dataset")
 
 observeEvent(input$copy_transposed, {
   clipr::write_clip(my_transposed_dataset(), allow_non_interactive=TRUE)
 })
 ```
 
-
-
 ```{r contingency_processing, context="server"}
 observe({
+  req(dataset())
   shinyFeedback::feedbackDanger(
     inputId = "contingency_varA",
     show = input$contingency_varA == input$contingency_varB,
