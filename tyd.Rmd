@@ -18,13 +18,16 @@ shiny::addResourcePath("shinyjs", system.file("srcjs", package = "shinyjs"))
 shinyjs::useShinyjs(html = TRUE)
 ```
 
+```{=html}
 <script src="shinyjs/inject.js"></script>
+```
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 shinyFeedback::useShinyFeedback()
 shinyjs::useShinyjs(rmd = TRUE)
 library(magrittr)
+source("R/utils.R")
 ```
 
 ```{r TODO}
@@ -33,17 +36,15 @@ library(magrittr)
 # do the transposing properly - in a tidyverse way so that it can be downloaded
 ```
 
-
 ### Original data
 
 ```{r}
 DT::dataTableOutput(outputId = "original_data")
 ```
 
-***
+------------------------------------------------------------------------
 
-<div class="upload-text"> 
-  
+::: upload-text
 Upload dataset
 
 ```{r}
@@ -55,18 +56,15 @@ OR
 ```{r}
 actionButton(inputId = "example_data", label = "Use example data")
 ```
-
-</div>
-
+:::
 
 ### Grouped output
-
 
 ```{r}
 uiOutput("grouped_output")
 ```
 
-***
+------------------------------------------------------------------------
 
 ```{r}
 selectInput(inputId = "grouping_var", label = "Choose grouping variable", choices = "")
@@ -85,7 +83,8 @@ uiOutput("column_output")
 #DT::dataTableOutput(outputId = "column_table")
 ```
 
-***
+------------------------------------------------------------------------
+
 ```{r}
 selectInput(inputId = "column_grouping_var", label = "Choose grouping variable", choices = "")
 selectInput(inputId = "column_data_values", label = "Choose data values", choices = "")
@@ -98,10 +97,11 @@ actionButton(inputId = "copy_column", label = "copy data to clipboard")
 ### Transpose
 
 ```{r}
-DT::dataTableOutput(outputId = "transposed_table")
+uiOutput("transposed_output")
 ```
 
-***
+------------------------------------------------------------------------
+
 ```{r}
 br()
 (downloadButton(outputId = "download_transposed", label = "download data"))
@@ -112,90 +112,91 @@ actionButton(inputId = "copy_transposed", label = "copy data to clipboard")
 ### Contingency table
 
 ```{r}
-DT::dataTableOutput(outputId = "contingency_table")
+uiOutput("contingency_output")
 ```
 
-***
+------------------------------------------------------------------------
+
 ```{r}
 selectInput(inputId = "contingency_varA", label = "Choose variable A", choices = "")
 selectInput(inputId = "contingency_varB", label = "Choose variable B", choices = "")
 br()
 (downloadButton(outputId = "download_contingency", label = "download data"))
+br()
+actionButton(inputId = "copy_contingency", label = "copy data to clipboard")
 ```
 
+### Bizarre (XY)
 
-```{r dt_options, context="server"}
-dt_options <- list(
-  scrollX = TRUE,
-  autoWidth = FALSE,
-  pageLength = 15,
-  dom = "ftip"
-)
+```{r}
+uiOutput("XY_output")
+```
 
-hide_download_btns <- function(){
-  shinyjs::hide("download_grouped")
-  shinyjs::hide("download_column")
-  shinyjs::hide("download_transposed")
-  shinyjs::hide("download_contingency")
-}
+------------------------------------------------------------------------
 
-show_download_btns <- function(){
-  shinyjs::show("download_grouped")
-  shinyjs::show("download_column")
-  shinyjs::show("download_transposed")
-  shinyjs::show("download_contingency")
-}
+```{r}
+selectInput(inputId = "XY_id", label = "Choose ID column", choices = "")
+selectInput(inputId = "XY_varX", label = "Choose X variable", choices = "")
+selectInput(inputId = "XY_Yval", label = "Choose Y values", choices = "")
+selectInput(inputId = "XY_Ygroup", label = "Choose Y grouping", choices = "")
+br()
+(downloadButton(outputId = "download_XY", label = "download data"))
+br()
+actionButton(inputId = "copy_XY", label = "copy data to clipboard")
+```
 
-create_table_UI <- function(tableoutputID, valid_dataset){
-  if(!valid_dataset){
-    p(class="load_ds_msg", "Load a dataset first, go to the 'Original data' tab")
-  } else {
-    DT::dataTableOutput(outputId = tableoutputID)
-  }
-}
+```{r XY_processing, context="server"}
+my_XY_dataset <- reactive({
+  req(dataset())
+  # if(input$XY_id == "add_ID") {
+  #   my_dataset <- dplyr::mutate(dataset(), ID = dplyr::row_number())
+  # } else {
+  #   my_dataset <- dplyr::mutate(dataset(), ID = input$XY_id)
+  # }
+  my_dataset <- dataset()
+  
+  my_dataset |>
+    dplyr::select(input$XY_id, input$XY_varX, input$XY_Yval, input$XY_Ygroup) |>
+    tidyr::pivot_wider(names_prefix = "Y_", values_from=input$XY_Yval, names_from = input$XY_Ygroup)
+})  
+```
 
-show_data_table <- function(dataset){
-  DT::datatable(
-    dataset,
-    rownames = FALSE,
-    options = list(
-        dom = "ftlip", 
-        scrollX = TRUE, 
-        autoWidth = FALSE
-      )
-    ) %>% 
-      DT::formatStyle(0, target = 'row', `font-size` = '90%', lineHeight = '80%') 
-}
+```{r XY_ui, context="server"}
+output$XY_output <- renderUI({
+  #browser()
+  create_table_UI("XY_table", isTruthy(dataset()))
+})
 
-create_download_handler <- function(dataset, dataset_name){
-  browser()
-  downloadHandler(
-    filename = function() {
-      paste0(dataset_name,".csv")
-    },
-    content = function(file) {
-      readr::write_csv(x = dataset, file)
-    }
-  )
-}
+output$XY_table <- DT::renderDataTable({
+  req(my_XY_dataset())
+  show_data_table(my_XY_dataset())
+})
+```
 
+```{r download_XY, context="server"}
+output$download_XY <- create_download_handler(my_XY_dataset(), "XY_dataset")
+
+observeEvent(input$copy_XY, {
+  clipr::write_clip(my_XY_dataset(), allow_non_interactive=TRUE)
+})
+```
+
+```{r functions, context="server"}
 duplicate_warning <- function(a, b){
   shinyFeedback::feedbackDanger(
     inputId = a,
     show = input[[a]] == input[[b]],
-    text = "No duplications allowed from this function"
+    text = "No duplications allowed"
   )
   shinyFeedback::feedbackDanger(
     inputId = b,
     show = input[[a]] == input[[b]],
-    text = "No duplications allowed from this function"
+    text = "No duplications allowed"
   )
 }
 
 hide_download_btns()
-
 ```
-
 
 ```{r import_data, context="server"}
 dataset <- reactiveVal()
@@ -245,11 +246,20 @@ observeEvent(dataset(), {
   
   show_download_btns()
   
+  if(! is.data.frame(my_transposed_dataset()))  shinyjs::hide("download_transposed")
+  
   if(length(column_names) > 2) {
     updateSelectInput(inputId="column_grouping_var", choices=column_names)
     updateSelectInput(inputId="column_data_values", choices=column_names, selected = data_selection)
+    
+    #updateSelectInput(inputId = "XY_id", label = "Choose ID column", choices = c("Add ID" = "add_ID", column_names))
+    updateSelectInput(inputId = "XY_id", label = "Choose ID column", choices = column_names)
+    updateSelectInput(inputId = "XY_varX", label = "Choose X variable", choices = column_names)
+    updateSelectInput(inputId = "XY_Yval", label = "Choose Y values", choices = column_names, selected=column_names[2])
+    updateSelectInput(inputId = "XY_Ygroup", label = "Choose Y grouping", choices = column_names, selected=data_selection)
   } else {
     shinysjs::hide("download_grouped")
+    #shinysjs::hide("download_XY")
   }
   updateSelectInput(inputId="contingency_varA", choices=column_names)
   updateSelectInput(inputId="contingency_varB", choices=column_names, selected = column_names[2])
@@ -266,7 +276,6 @@ output$original_data <- DT::renderDataTable({
 ```{r grouped_processing, context="server"}
 observe({
   req(dataset())
-  
   shinyFeedback::feedbackDanger(
     inputId = "grouping_var",
     show = input$grouping_var %in% c(input$row_names, input$data_values),
@@ -303,21 +312,7 @@ observe({
 my_grouped_dataset <- reactive({
   req(dataset())
   req(anyDuplicated(c(input$row_names, input$data_values, input$grouping_var)) == 0)
-
-  my_dataset <- dataset()
-  
-  if(anyDuplicated(dplyr::select(my_dataset, - .data[[input$data_values]])) > 0){
-    my_dataset <- my_dataset %>%
-      dplyr::group_by(.data[[input$grouping_var]], .data[[input$row_names]]) %>%
-      dplyr::mutate(id = dplyr::row_number()) %>%
-      dplyr::ungroup()
-    
-    my_dataset %>%
-      tidyr::pivot_wider(values_from = .data[[input$data_values]], names_from = c(.data[[input$grouping_var]], id))
-  } else {
-    my_dataset %>%
-      tidyr::pivot_wider(values_from = .data[[input$data_values]], names_from = .data[[input$grouping_var]])
-  }
+  create_grouped_output(dataset(), input$row_names, input$data_values, input$grouping_var)
 })
 ```
 
@@ -336,9 +331,7 @@ output$download_grouped <- create_download_handler(my_grouped_dataset(), "groupe
 observeEvent(input$copy_grouped, {
   clipr::write_clip(my_grouped_dataset(), allow_non_interactive=TRUE)
 })
-
 ```
-
 
 ```{r column_processing, context="server"}
 observe({
@@ -355,17 +348,11 @@ my_column_dataset <- reactive({
   req(dataset())
   req(input$column_grouping_var != input$column_data_values)
   
-  dataset() %>%
-    dplyr::select(.data[[input$column_grouping_var]], .data[[input$column_data_values]]) %>%
-    dplyr::group_by(.data[[input$column_grouping_var]]) %>%
-    dplyr::mutate(id = dplyr::row_number()) %>%
-    dplyr::ungroup() %>%
-    tidyr::pivot_wider(names_from = .data[[input$column_grouping_var]], values_from = .data[[input$column_data_values]]) %>%
-    dplyr::select(-id)
+  create_column_output(dataset(), input$column_grouping_var, input$column_data_values)
 })
 ```
 
-```{r, context="server"}
+```{r column_ui, context="server"}
 output$column_output <- renderUI({
   #browser()
   create_table_UI("column_table", isTruthy(dataset()))
@@ -383,19 +370,28 @@ output$download_column <- create_download_handler(my_column_dataset(), "column_d
 observeEvent(input$copy_column, {
   clipr::write_clip(my_column_dataset(), allow_non_interactive=TRUE)
 })
-
 ```
 
-```{r transpose_processing, context="server"}
-my_transposed_dataset <- reactive({
-  req(dataset())
-  
-  t(dataset())
+```{r transpose_ui, context="server"}
+output$transposed_output <- renderUI({
+  create_table_UI("transposed_table", isTruthy(dataset()), msg = "This format will only download properly if the dataset has (unique) row and column names.")
 })
 
 output$transposed_table <- DT::renderDataTable({
   req(my_transposed_dataset())
   show_data_table(my_transposed_dataset())
+})
+```
+
+```{r transpose_processing, context="server"}
+my_transposed_dataset <- reactive({
+  req(dataset())
+  if(anyDuplicated(dataset()[[1]]) == 0){ # no duplicate row names so we can do it properly
+    ds <- tibble::column_to_rownames(dataset(), colnames(dataset())[1])
+    tibble::as_tibble(t(ds), rownames="row_names")
+  } else {
+    t(dataset()) # we can transpose it but it won't download properly
+  }
 })
 ```
 
@@ -427,38 +423,26 @@ my_contingency_table <- reactive({
   my_dataset %>%
     dplyr::count(.data[[input$contingency_varA]], .data[[input$contingency_varB]]) %>%
     tidyr::spread(key = .data[[input$contingency_varB]], value = n)
-  
-  # test set - keep for now
-  #cats <- read_delim("test_data/cats.dat")
-  #cats %>%
-  #  dplyr::count(Training, Dance) %>%
-  #  tidyr::spread(Dance, n)
+})
+```
+
+```{r contingency_ui, context="server"}
+output$contingency_output <- renderUI({
+  create_table_UI("contingency_table", isTruthy(dataset()))
 })
 
 output$contingency_table <- DT::renderDataTable({
   req(my_contingency_table())
-  
-  DT::datatable(
-    my_contingency_table(),
-    rownames = FALSE,
-    options = list(
-        dom = "t", 
-        scrollX = TRUE, 
-        autoWidth = FALSE
-      )
-    )
+  show_data_table(my_contingency_table())
 })
 ```
 
 ```{r download_contingency, context="server"}
-output$download_contingency <- downloadHandler(
-    filename = function() {
-      "contingency_table.csv"
-    },
-    content = function(file) {
-      readr::write_csv(x = my_contingency_table(), file)
-    }
-)
+output$download_contingency <- create_download_handler(my_contingency_table(), "contingency_table")
+
+observeEvent(input$copy_contingency, {
+  clipr::write_clip(my_contingency_table(), allow_non_interactive=TRUE)
+})
 ```
 
 <!--[Place your content here]{.navbar-fixed-bottom .text-muted .bg-info} -->
