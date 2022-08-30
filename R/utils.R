@@ -18,12 +18,17 @@ dt_options <- list(
   scrollX = TRUE,
   autoWidth = FALSE,
   pageLength = 15,
-  dom = "ftip"
+  dom = "tip"
 )
 
-create_table_UI <- function(tableoutputID, valid_dataset, msg=NULL){
+create_table_UI <- function(tableoutputID, valid_dataset, min_no_col=2, actual_no_col=2, msg=NULL){
   if(!valid_dataset){
     p(class="load_ds_msg", "Load a dataset first, go to the 'Original data' tab")
+  } else if (actual_no_col < min_no_col) {
+    p(class="load_ds_msg", 
+      paste("This format requires a minimum of",  min_no_col, 
+            "columns in the uploaded dataset, the current dataset has", actual_no_col)
+    )
   } else {
     verticalLayout(
       DT::dataTableOutput(outputId = tableoutputID),
@@ -37,8 +42,10 @@ show_data_table <- function(dataset){
     dataset,
     rownames = FALSE,
     options = list(
-      dom = "ftlip", 
-      scrollX = TRUE, 
+      #dom = "ftlip", 
+      dom = "tip", 
+      scrollX = TRUE,
+      scrollY = TRUE,
       autoWidth = FALSE
     )
   ) %>% 

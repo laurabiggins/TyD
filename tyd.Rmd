@@ -6,7 +6,7 @@ output:
     resize_reload: false
     css: "www/tyd.css"
     includes:
-      after_body: "www/footer.html"    
+      after_body: "www/footer.html"   
 runtime: shiny_prerendered
 ---
 
@@ -31,9 +31,10 @@ source("R/utils.R")
 ```
 
 ```{r TODO}
-# grouped data option only available for 3 or more columns
+# grouped data option only available for 3 or more columns - add message
 # column output - the grouping variable should default to the column with the fewest unique values
-# do the transposing properly - in a tidyverse way so that it can be downloaded
+# column output for coyotes - variables not displaying
+
 ```
 
 ### Original data
@@ -56,6 +57,10 @@ OR
 ```{r}
 actionButton(inputId = "example_data", label = "Use example data")
 ```
+<br>
+<br>
+Datasets must have column headings
+
 :::
 
 ### Grouped output
@@ -105,6 +110,7 @@ uiOutput("transposed_output")
 ```{r}
 br()
 (downloadButton(outputId = "download_transposed", label = "download data"))
+p(class="load_ds_msg", id="download_transposed", "This format will only download as a file if the dataset has (unique) row and column names.")
 br()
 actionButton(inputId = "copy_transposed", label = "copy data to clipboard")
 ```
@@ -157,14 +163,24 @@ my_XY_dataset <- reactive({
   
   my_dataset |>
     dplyr::select(input$XY_id, input$XY_varX, input$XY_Yval, input$XY_Ygroup) |>
-    tidyr::pivot_wider(names_prefix = "Y_", values_from=input$XY_Yval, names_from = input$XY_Ygroup)
+    tidyr::pivot_wider(names_prefix = paste0(input$XY_Yval, "_"), values_from=input$XY_Yval, names_from = input$XY_Ygroup)
 })  
 ```
 
 ```{r XY_ui, context="server"}
 output$XY_output <- renderUI({
   #browser()
-  create_table_UI("XY_table", isTruthy(dataset()))
+    #browser()
+  tabsetPanel(
+    tabPanel("Data",  
+             create_table_UI("XY_table", isTruthy(dataset()), min_no_col=3, actual_no_col=no_of_cols())),
+    tabPanel("Example", 
+             br(),
+             p("An example of this format"),
+             show_data_table(readRDS("data/XY_eg.rds"))
+             )
+  )
+ # create_table_UI("XY_table", isTruthy(dataset()), min_no_col=3, actual_no_col=no_of_cols())
 })
 
 output$XY_table <- DT::renderDataTable({
@@ -196,10 +212,12 @@ duplicate_warning <- function(a, b){
 }
 
 hide_download_btns()
+shinyjs::hide("download_transposed")
 ```
 
 ```{r import_data, context="server"}
 dataset <- reactiveVal()
+no_of_cols <- reactiveVal()
 data_path <- reactive(input$input_file$datapath)
 
 not_all_na <- function(x) {!all(is.na(x))}
@@ -228,42 +246,59 @@ observeEvent(data_path(), {
 })
 
 observeEvent(input$example_data, {
-  imported_data <- readRDS("test_data.rds")
+  imported_data <- readRDS("data/test_data.rds")
   dataset(imported_data)
 })
 
 observeEvent(dataset(), {
   column_names <- colnames(dataset())
+  
+  no_of_cols(length(column_names))
+  
   data_selection <- dplyr::if_else(
-    length(column_names) > 2, 
+    #length(column_names) > 2,
+    no_of_cols() > 2, 
     column_names[3], 
     column_names[2]
   )
   
-  updateSelectInput(inputId="grouping_var", choices=column_names)
-  updateSelectInput(inputId="row_names", choices=column_names, selected = column_names[2])
-  updateSelectInput(inputId="data_values", choices=column_names, selected = data_selection)
+  print(dataset())  
+  
+  unique_values <- dplyr::summarise(dataset(), dplyr::across(dplyr::everything(), dplyr::n_distinct))
+  
+  print(unique_values)  
+  s1 <- names(which.min(unique_values))
+  s2 <- names(which.max(unique_values))
+  print(s1)
+  
+  updateSelectInput(inputId="column_grouping_var", choices=column_names, selected = s1)
+  updateSelectInput(inputId="column_data_values", choices=column_names, selected = s2)
+  #updateSelectInput(inputId="column_data_values", choices=column_names, selected = data_selection)
   
   show_download_btns()
   
-  if(! is.data.frame(my_transposed_dataset()))  shinyjs::hide("download_transposed")
-  
-  if(length(column_names) > 2) {
-    updateSelectInput(inputId="column_grouping_var", choices=column_names)
-    updateSelectInput(inputId="column_data_values", choices=column_names, selected = data_selection)
-    
-    #updateSelectInput(inputId = "XY_id", label = "Choose ID column", choices = c("Add ID" = "add_ID", column_names))
-    updateSelectInput(inputId = "XY_id", label = "Choose ID column", choices = column_names)
-    updateSelectInput(inputId = "XY_varX", label = "Choose X variable", choices = column_names)
-    updateSelectInput(inputId = "XY_Yval", label = "Choose Y values", choices = column_names, selected=column_names[2])
-    updateSelectInput(inputId = "XY_Ygroup", label = "Choose Y grouping", choices = column_names, selected=data_selection)
-  } else {
-    shinysjs::hide("download_grouped")
-    #shinysjs::hide("download_XY")
-  }
+  updateSelectInput(inputId="grouping_var", choices=column_names)
+  updateSelectInput(inputId="row_names", choices=column_names, selected = column_names[2])
+  updateSelectInput(inputId="data_values", choices=column_names, selected = data_selection)
+
+  updateSelectInput(inputId = "XY_id", label = "Choose ID column", choices = column_names)
+  updateSelectInput(inputId = "XY_varX", label = "Choose X variable", choices = column_names)
+  updateSelectInput(inputId = "XY_Yval", label = "Choose Y values", choices = column_names, selected=column_names[2])
+  updateSelectInput(inputId = "XY_Ygroup", label = "Choose Y grouping", choices = column_names, selected=data_selection)
+
   updateSelectInput(inputId="contingency_varA", choices=column_names)
   updateSelectInput(inputId="contingency_varB", choices=column_names, selected = column_names[2])
   
+  if(! is.data.frame(my_transposed_dataset())){
+    shinyjs::hide("download_transposed")
+    shinyjs::show("download_transposed_msg") 
+  }
+  
+  if(length(column_names) < 3){
+    shinyjs::hide("download_grouped")
+    shinyjs::hide("download_XY")
+  }
+
 })
 
 output$original_data <- DT::renderDataTable({
@@ -317,7 +352,7 @@ my_grouped_dataset <- reactive({
 ```
 
 ```{r grouped_ui, context="server"}
-output$grouped_output <- renderUI(create_table_UI("grouped_table", isTruthy(dataset())))
+output$grouped_output <- renderUI(create_table_UI("grouped_table", isTruthy(dataset()), min_no_col=3, actual_no_col=no_of_cols()))
 
 output$grouped_table <- DT::renderDataTable({
   req(my_grouped_dataset())
@@ -354,8 +389,12 @@ my_column_dataset <- reactive({
 
 ```{r column_ui, context="server"}
 output$column_output <- renderUI({
-  #browser()
   create_table_UI("column_table", isTruthy(dataset()))
+  #browser()
+  # tabsetPanel(
+  #   tabPanel("Data", create_table_UI("column_table", isTruthy(dataset()))),
+  #   tabPanel("Example")
+  # )
 })
 
 output$column_table <- DT::renderDataTable({
@@ -374,7 +413,7 @@ observeEvent(input$copy_column, {
 
 ```{r transpose_ui, context="server"}
 output$transposed_output <- renderUI({
-  create_table_UI("transposed_table", isTruthy(dataset()), msg = "This format will only download properly if the dataset has (unique) row and column names.")
+  create_table_UI("transposed_table", isTruthy(dataset()))#, msg = "This format will only download as a file if the dataset has (unique) row and column names.")
 })
 
 output$transposed_table <- DT::renderDataTable({
